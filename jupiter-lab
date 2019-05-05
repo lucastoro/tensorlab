@@ -5,6 +5,7 @@
 
 DOCKER=nvidia-docker
 CONTAINER=jupyterlab:tensorflow
+NODE=10.15.3
 
 function build {
   local TENSORFLOW_WHEEL=$1
@@ -27,22 +28,24 @@ function build {
   pushd $TMPDIR
   echo "\
 FROM tensorflow/tensorflow:latest-gpu-jupyter 
-COPY $TENSORFLOW_WHEEL /tmp/
 RUN apt update && apt install -y python3-pip wget rsync
-RUN pip3 install --upgrade pip
-RUN pip3 install jupyterlab matplotlib ipyvolume tornado
-RUN pip3 install jupyter-tensorboard
-RUN pip3 install /tmp/$TENSORFLOW_WHEEL
-RUN rm /tmp/$TENSORFLOW_WHEEL
 # nodejs is needed by some notebook extensions like ipyvolume or jupyterlab_tensorboard
 # Ubuntu 16:04 has an outdated version, must be installed by tarball
-RUN wget https://nodejs.org/dist/v10.15.3/node-v10.15.3-linux-x64.tar.xz
-RUN tar -xf node-v10.15.3-linux-x64.tar.xz
-RUN rsync -a node-v10.15.3-linux-x64/ /usr/
-RUN rm node-v10.15.3-linux-x64.tar.xz
-RUN rm -r node-v10.15.3-linux-x64
+RUN wget https://nodejs.org/dist/v$NODE/node-v$NODE-linux-x64.tar.xz
+RUN tar -xf node-v$NODE-linux-x64.tar.xz
+RUN rsync -a node-v$NODE-linux-x64/ /usr/
+RUN rm node-v$NODE-linux-x64.tar.xz
+RUN rm -r node-v$NODE-linux-x64
+# install out custom tensorflow wheel
+COPY $TENSORFLOW_WHEEL /tmp/
+RUN pip3 install /tmp/$TENSORFLOW_WHEEL
+RUN rm /tmp/$TENSORFLOW_WHEEL
+# install python modules
+RUN pip3 install --upgrade pip
+RUN pip3 install jupyterlab matplotlib ipympl ipyvolume tornado jupyter-tensorboard
 # install the lab extensions
 RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager
+RUN jupyter labextension install jupyter-matplotlib
 RUN jupyter labextension install ipyvolume
 RUN jupyter labextension install jupyter-threejs
 RUN jupyter labextension install jupyterlab_tensorboard
@@ -54,10 +57,10 @@ ENTRYPOINT [\"/bin/bash\", \"/usr/bin/startlab.sh\"]" >> Dockerfile
 
   echo '\
 #!/bin/bash
-addgroup --gid $XGID jupyterlab
-adduser --uid $XUID --gid $XGID --gecos "" --disabled-password jupyterlab
+addgroup --gid $XGID $XGROUP
+adduser --uid $XUID --gid $XGID --gecos "" --disabled-password $XUSER
 [ -z "$@" ] && {
-  su -c "jupyter lab --no-browser --notebook-dir=/media/shared" jupyterlab
+  su -c "jupyter lab --no-browser --notebook-dir=/media/shared" $XUSER
 } || {
   $@
 }' > startlab.sh
@@ -74,6 +77,8 @@ function launch {
     -v $PWD:/media/shared \
     -p 8888:8888 \
     --net host \
+    -e XUSER=$USER \
+    -e XGROUP=$(groups|cut -d' ' -f1) \
     -e XUID=$(id -u) \
     -e XGID=$(id -g) \
     $CONTAINER $@
