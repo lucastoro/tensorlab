@@ -4,6 +4,7 @@
 # https://www.tensorflow.org/install/source
 
 DOCKER=nvidia-docker
+CONTAINER=jupyterlab:tensorflow
 
 function build {
   local TENSORFLOW_WHEEL=$1
@@ -19,6 +20,8 @@ function build {
   }
 
   local TMPDIR=$(mktemp -d)
+  trap "rm -rf $TMPDIR" EXIT
+
   cp $TENSORFLOW_WHEEL $TMPDIR
   TENSORFLOW_WHEEL=$(basename $TENSORFLOW_WHEEL)
   pushd $TMPDIR
@@ -27,32 +30,53 @@ FROM tensorflow/tensorflow:latest-gpu-jupyter
 COPY $TENSORFLOW_WHEEL /tmp/
 RUN apt update && apt install -y python3-pip wget rsync
 RUN pip3 install --upgrade pip
-RUN pip3 install jupyterlab matplotlib ipyvolume
+RUN pip3 install jupyterlab matplotlib ipyvolume tornado
+RUN pip3 install jupyter-tensorboard
 RUN pip3 install /tmp/$TENSORFLOW_WHEEL
 RUN rm /tmp/$TENSORFLOW_WHEEL
-# nodejs is needed by some notebook extensions like ipyvolume, 16:04 has an outdated version, must be installed by tarball
+# nodejs is needed by some notebook extensions like ipyvolume or jupyterlab_tensorboard
+# Ubuntu 16:04 has an outdated version, must be installed by tarball
 RUN wget https://nodejs.org/dist/v10.15.3/node-v10.15.3-linux-x64.tar.xz
 RUN tar -xf node-v10.15.3-linux-x64.tar.xz
 RUN rsync -a node-v10.15.3-linux-x64/ /usr/
 RUN rm node-v10.15.3-linux-x64.tar.xz
 RUN rm -r node-v10.15.3-linux-x64
-# ipyvolume needs a bit of work to be enabled
+# install the lab extensions
 RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager
 RUN jupyter labextension install ipyvolume
 RUN jupyter labextension install jupyter-threejs
-RUN mkdir /.ipyvolume
-RUN chmod 777 /.ipyvolume
-# default to running the lab
-CMD [\"jupyter\", \"lab\", \"--no-browser\", \"--notebook-dir=/media/shared\"]" >> Dockerfile
-  
-  $DOCKER build -t jupyterlab:tensorflow .
+RUN jupyter labextension install jupyterlab_tensorboard
+# install the init script
+COPY startlab.sh /usr/bin/
+RUN chmod +x /usr/bin/startlab.sh
+# execute the custom init script
+ENTRYPOINT [\"/bin/bash\", \"/usr/bin/startlab.sh\"]" >> Dockerfile
+
+  echo '\
+#!/bin/bash
+addgroup --gid $XGID jupyterlab
+adduser --uid $XUID --gid $XGID --gecos "" --disabled-password jupyterlab
+[ -z "$@" ] && {
+  su -c "jupyter lab --no-browser --notebook-dir=/media/shared" jupyterlab
+} || {
+  $@
+}' > startlab.sh
+
+  $DOCKER build -t $CONTAINER .
   local RESULT=$?
-  popd; rm -rf $TMPDIR
+  popd
   return $RESULT
 }
 
 function launch {
-  $DOCKER run --net host --rm -it -v $PWD:/media/shared -u $(id -u):$(id -g) jupyterlab:tensorflow $@ 
+  $DOCKER run \
+    --rm -it \
+    -v $PWD:/media/shared \
+    -p 8888:8888 \
+    --net host \
+    -e XUID=$(id -u) \
+    -e XGID=$(id -g) \
+    $CONTAINER $@
 }
 
 [[ "$1" == '--build' || "$1" == '-b' ]] && {

@@ -7,6 +7,11 @@ I needed to recompile Tensorflow because my beloved X5670 doesn't support AVX, a
 `jupiter-lab` -> launches an instance of jupiterlab, /media/shared is mapped on the current dir.  
 `jupiter-lab --build [WHATSOVER].whl` -> generates a docker image with the specified tensorflow wheel package.
 
+## Additional packages/modules
+- matplotlib
+- [tensorboard for jupterlab](https://github.com/chaoleili/jupyterlab_tensorboard)
+- [ipyvolume](https://github.com/maartenbreddels/ipyvolume)
+
 ## Note
 This thing doesn't cover recompiling Tensorflow, just the container packaging, for that check out https://www.tensorflow.org/install/source
 
