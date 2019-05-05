@@ -22,27 +22,28 @@ function build {
   cp $TENSORFLOW_WHEEL $TMPDIR
   TENSORFLOW_WHEEL=$(basename $TENSORFLOW_WHEEL)
   pushd $TMPDIR
-  echo "FROM tensorflow/tensorflow:latest-gpu-jupyter" >> Dockerfile 
-  echo "COPY $TENSORFLOW_WHEEL /tmp/" >> Dockerfile
-  echo "RUN apt update && apt install -y python3-pip wget rsync" >> Dockerfile
-  echo "RUN pip3 install --upgrade pip" >> Dockerfile
-  echo "RUN pip3 install jupyterlab matplotlib ipyvolume" >> Dockerfile
-  echo "RUN pip3 install /tmp/$TENSORFLOW_WHEEL" >> Dockerfile
-  echo "RUN rm /tmp/$TENSORFLOW_WHEEL" >> Dockerfile
-  # nodejs is needed by some notebook extensions like ipyvolume, 16:04 has an outdated version, must be installed by tarball
-  echo "RUN wget https://nodejs.org/dist/v10.15.3/node-v10.15.3-linux-x64.tar.xz" >> Dockerfile
-  echo "RUN tar -xf node-v10.15.3-linux-x64.tar.xz" >> Dockerfile
-  echo "RUN rsync -a node-v10.15.3-linux-x64/ /usr/" >> Dockerfile
-  echo "RUN rm node-v10.15.3-linux-x64.tar.xz" >> Dockerfile
-  echo "RUN rm -r node-v10.15.3-linux-x64" >> Dockerfile
-  # ipyvolume needs a bit of work to be enabled
-  echo "RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager" >> Dockerfile
-  echo "RUN jupyter labextension install ipyvolume" >> Dockerfile
-  echo "RUN jupyter labextension install jupyter-threejs" >> Dockerfile
-  echo "RUN mkdir /.ipyvolume" >> Dockerfile
-  echo "RUN chmod 777 /.ipyvolume" >> Dockerfile
-  # default to running the lab
-  echo 'CMD ["jupyter", "lab", "--no-browser"]' >> Dockerfile
+  echo "\
+FROM tensorflow/tensorflow:latest-gpu-jupyter 
+COPY $TENSORFLOW_WHEEL /tmp/
+RUN apt update && apt install -y python3-pip wget rsync
+RUN pip3 install --upgrade pip
+RUN pip3 install jupyterlab matplotlib ipyvolume
+RUN pip3 install /tmp/$TENSORFLOW_WHEEL
+RUN rm /tmp/$TENSORFLOW_WHEEL
+# nodejs is needed by some notebook extensions like ipyvolume, 16:04 has an outdated version, must be installed by tarball
+RUN wget https://nodejs.org/dist/v10.15.3/node-v10.15.3-linux-x64.tar.xz
+RUN tar -xf node-v10.15.3-linux-x64.tar.xz
+RUN rsync -a node-v10.15.3-linux-x64/ /usr/
+RUN rm node-v10.15.3-linux-x64.tar.xz
+RUN rm -r node-v10.15.3-linux-x64
+# ipyvolume needs a bit of work to be enabled
+RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager
+RUN jupyter labextension install ipyvolume
+RUN jupyter labextension install jupyter-threejs
+RUN mkdir /.ipyvolume
+RUN chmod 777 /.ipyvolume
+# default to running the lab
+CMD [\"jupyter\", \"lab\", \"--no-browser\"]" >> Dockerfile
   
   $DOCKER build -t jupyterlab:tensorflow .
   local RESULT=$?
@@ -54,7 +55,7 @@ function launch {
   $DOCKER run --net host --rm -it -v $PWD:/media/shared -u $(id -u):$(id -g) jupyterlab:tensorflow $@ 
 }
 
-[ "$1" == '--build' ] && {
+[[ "$1" == '--build' || "$1" == '-b' ]] && {
   shift
   build $@
 } || {
