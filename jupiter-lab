@@ -43,7 +43,7 @@ RUN jupyter labextension install jupyter-threejs
 RUN mkdir /.ipyvolume
 RUN chmod 777 /.ipyvolume
 # default to running the lab
-CMD [\"jupyter\", \"lab\", \"--no-browser\"]" >> Dockerfile
+CMD [\"jupyter\", \"lab\", \"--no-browser\", \"--notebook-dir=/media/shared\"]" >> Dockerfile
   
   $DOCKER build -t jupyterlab:tensorflow .
   local RESULT=$?
@@ -56,8 +56,7 @@ function launch {
 }
 
 [[ "$1" == '--build' || "$1" == '-b' ]] && {
-  shift
-  build $@
+  shift; build $@
 } || {
   launch $@
 }
