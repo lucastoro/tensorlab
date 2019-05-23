@@ -6,16 +6,18 @@
 DOCKER=nvidia-docker
 CONTAINER=jupyterlab:tensorflow
 NODE=10.15.3
+modules=(matplotlib pandas ipympl ipyvolume tornado jupyter-tensorboard gym pyscaffold interpret)
+extensions=(jupyter-matplotlib ipyvolume jupyter-threejs jupyterlab_tensorboard)
 
 function build {
   local TENSORFLOW_WHEEL=$1
 
-  [[ -z "$TENSORFLOW_WHEEL" ]] && {
+  [ -z "$TENSORFLOW_WHEEL" ] && {
     echo 'missing tensorflow wheel file'
     exit 1
   }
 
-  [[ -r "$TENSORFLOW_WHEEL" ]] || {
+  [ -r "$TENSORFLOW_WHEEL" ] || {
     echo "cannot read $TENSORFLOW_WHEEL"
     exit 1
   }
@@ -28,7 +30,8 @@ function build {
   pushd $TMPDIR
   echo "\
 FROM tensorflow/tensorflow:latest-gpu-jupyter 
-RUN apt update && apt install -y python3-pip wget rsync
+RUN apt update && apt install -y python3-pip wget rsync python-opengl xvfb sudo
+
 # nodejs is needed by some notebook extensions like ipyvolume or jupyterlab_tensorboard
 # Ubuntu 16:04 has an outdated version, must be installed by tarball
 RUN wget https://nodejs.org/dist/v$NODE/node-v$NODE-linux-x64.tar.xz
@@ -36,34 +39,39 @@ RUN tar -xf node-v$NODE-linux-x64.tar.xz
 RUN rsync -a node-v$NODE-linux-x64/ /usr/
 RUN rm node-v$NODE-linux-x64.tar.xz
 RUN rm -r node-v$NODE-linux-x64
-# install out custom tensorflow wheel
+
+# install our custom tensorflow wheel
 COPY $TENSORFLOW_WHEEL /tmp/
 RUN pip3 install /tmp/$TENSORFLOW_WHEEL
 RUN rm /tmp/$TENSORFLOW_WHEEL
+
 # install python modules
-RUN pip3 install --upgrade pip
-RUN pip3 install jupyterlab matplotlib ipympl ipyvolume tornado jupyter-tensorboard
+RUN pip3 install -U pip
+RUN pip3 install -U setuptools jupyterlab scipy==1.2.1
+RUN pip3 install -U ${modules[@]} 
+
 # install the lab extensions
-RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager
-RUN jupyter labextension install jupyter-matplotlib
-RUN jupyter labextension install ipyvolume
-RUN jupyter labextension install jupyter-threejs
-RUN jupyter labextension install jupyterlab_tensorboard
+RUN jupyter labextension install @jupyter-widgets/jupyterlab-manager ${extensions[@]}
+
 # install the init script
 COPY startlab.sh /usr/bin/
 RUN chmod +x /usr/bin/startlab.sh
+
 # execute the custom init script
-ENTRYPOINT [\"/bin/bash\", \"/usr/bin/startlab.sh\"]" >> Dockerfile
+ENTRYPOINT [\"/bin/bash\", \"/usr/bin/startlab.sh\"]" > Dockerfile
 
   echo '\
 #!/bin/bash
 addgroup --gid $XGID $XGROUP
 adduser --uid $XUID --gid $XGID --gecos "" --disabled-password $XUSER
-[ -z "$@" ] && {
+adduser $XUSER sudo
+echo "$XUSER:password" | chpasswd
+if [ -z "$@" ]; then
+# su -c "xvfb-run -s '-screen 0 1024x1024x24' jupyter lab --no-browser --notebook-dir=/media/shared" $XUSER
   su -c "jupyter lab --no-browser --notebook-dir=/media/shared" $XUSER
-} || {
+else
   $@
-}' > startlab.sh
+fi' > startlab.sh
 
   $DOCKER build -t $CONTAINER .
   local RESULT=$?
@@ -84,8 +92,9 @@ function launch {
     $CONTAINER $@
 }
 
-[[ "$1" == '--build' || "$1" == '-b' ]] && {
-  shift; build $@
-} || {
-  launch $@
-}
+[ "$1" == '--build' -o "$1" == '-b' ] && {
+  build $2; exit
+} 
+
+launch $@
+
